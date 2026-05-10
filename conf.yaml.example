@@ -45,3 +45,6 @@ vad:
   threshold: 0.5
   min_silence_duration_ms: 500
   speech_pad_ms: 300
+
+memory:
+  extraction_interval: 10  # Extract long-term memory every N conversation turns

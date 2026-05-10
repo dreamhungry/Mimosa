@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Conversation handler orchestrating the full dialogue flow."""
 
+import asyncio
 import base64
 from typing import Any, Callable, Coroutine, Dict, Optional
 
@@ -27,6 +28,10 @@ class ConversationHandler:
         self._audio_buffer: list = []
         self._is_speaking = False
         self._speech_detected = False
+
+        # Memory extraction: track conversation turns
+        self._turn_count = 0
+        self._extraction_interval = self.ctx.config.memory.extraction_interval
 
         # Real-time VAD state
         self._vad_state = self._STATE_IDLE
@@ -292,8 +297,8 @@ class ConversationHandler:
         # Collect full response for TTS
         full_response = ""
 
-        # Stream LLM response
-        async for chunk in self.ctx.llm.chat_completion(messages, system=self.ctx.persona_prompt):
+        # Stream LLM response (system prompt includes long-term memory)
+        async for chunk in self.ctx.llm.chat_completion(messages, system=self.ctx.full_system_prompt):
             full_response += chunk
 
         if not full_response:
@@ -331,7 +336,52 @@ class ConversationHandler:
         # Save history periodically
         self.ctx.chat_history.save()
 
+        # Periodic memory extraction every N turns
+        self._turn_count += 1
+        if self._turn_count % self._extraction_interval == 0:
+            asyncio.create_task(self._extract_memory_periodic())
+
     async def handle_interrupt(self):
         """Handle user interruption signal."""
         self._is_speaking = False
         logger.info("Conversation interrupted by user")
+
+    async def _extract_memory_periodic(self):
+        """Extract key facts from recent conversation and update long-term memory.
+
+        Triggered every N turns (configured by memory.extraction_interval).
+        """
+        messages = self.ctx.chat_history.messages
+        if len(messages) < 2:
+            return
+
+        # Only analyze messages from the recent interval window
+        window = self._extraction_interval * 2  # user + assistant pairs
+        recent_messages = messages[-window:]
+
+        conversation_lines = []
+        for msg in recent_messages:
+            role = "User" if msg["role"] == "user" else "Mimosa"
+            conversation_lines.append(f"{role}: {msg['content']}")
+        conversation_text = "\n".join(conversation_lines)
+
+        extraction_prompt = self.ctx.long_term_memory.build_extraction_prompt(
+            conversation_text
+        )
+
+        try:
+            extraction_result = ""
+            async for chunk in self.ctx.llm.chat_completion(
+                [{"role": "user", "content": extraction_prompt}],
+                system="You are a precise fact extraction assistant. Follow instructions exactly.",
+            ):
+                extraction_result += chunk
+
+            self.ctx.long_term_memory.update_from_extraction(extraction_result)
+            logger.info(
+                f"Periodic memory extraction (turn {self._turn_count}): "
+                f"{extraction_result[:100]}..."
+            )
+
+        except Exception as e:
+            logger.error(f"Periodic memory extraction failed: {e}")

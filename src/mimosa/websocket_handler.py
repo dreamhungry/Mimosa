@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """WebSocket message handler."""
 
+import asyncio
 import json
 from typing import Dict
 
@@ -138,7 +139,47 @@ class WebSocketHandler:
             # Save conversation history on disconnect
             handler.ctx.chat_history.save(client_id)
 
+            # Extract long-term memory in background (non-blocking)
+            asyncio.create_task(self._extract_memory(handler))
+
         logger.info(f"Client disconnected: {client_id}")
+
+    async def _extract_memory(self, handler: ConversationHandler):
+        """Extract key facts from conversation and update long-term memory.
+
+        :param handler: The conversation handler with history.
+        """
+        messages = handler.ctx.chat_history.messages
+        if len(messages) < 2:
+            return
+
+        # Format conversation for the extraction prompt
+        conversation_lines = []
+        for msg in messages:
+            role = "User" if msg["role"] == "user" else "Mimosa"
+            conversation_lines.append(f"{role}: {msg['content']}")
+        conversation_text = "\n".join(conversation_lines)
+
+        # Build extraction prompt
+        extraction_prompt = handler.ctx.long_term_memory.build_extraction_prompt(
+            conversation_text
+        )
+
+        # Call LLM to extract facts (collect full response)
+        try:
+            extraction_result = ""
+            async for chunk in handler.ctx.llm.chat_completion(
+                [{"role": "user", "content": extraction_prompt}],
+                system="You are a precise fact extraction assistant. Follow instructions exactly.",
+            ):
+                extraction_result += chunk
+
+            # Update memory file
+            handler.ctx.long_term_memory.update_from_extraction(extraction_result)
+            logger.info(f"Memory extraction complete: {extraction_result[:100]}...")
+
+        except Exception as e:
+            logger.error(f"Memory extraction failed: {e}")
 
     async def _send(self, websocket: WebSocket, message: dict):
         """Send a JSON message to a WebSocket client.

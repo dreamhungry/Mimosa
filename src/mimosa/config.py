@@ -64,6 +64,12 @@ class VADConfig(BaseModel):
     speech_pad_ms: int = 300
 
 
+class MemoryConfig(BaseModel):
+    """Memory and conversation history configuration."""
+
+    extraction_interval: int = 10  # Extract memory every N conversation turns
+
+
 class CharacterConfig(BaseModel):
     """Character personality configuration."""
 
@@ -81,6 +87,7 @@ class MimosaConfig(BaseModel):
     asr: ASRConfig = ASRConfig()
     tts: TTSConfig = TTSConfig()
     vad: VADConfig = VADConfig()
+    memory: MemoryConfig = MemoryConfig()
     cache_dir: str = ""
 
 

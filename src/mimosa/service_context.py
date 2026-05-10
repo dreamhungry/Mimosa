@@ -13,6 +13,7 @@ from .live2d.live2d_model import Live2DModel
 from .llm.llm_factory import create_llm
 from .llm.llm_interface import LLMInterface
 from .memory.chat_history import ChatHistory
+from .memory.long_term_memory import LongTermMemory
 from .tts.tts_factory import create_tts
 from .tts.tts_interface import TTSInterface
 from .vad.vad_factory import create_vad
@@ -64,6 +65,10 @@ class ServiceContext:
 
         # Memory
         self.chat_history = ChatHistory()
+        self.long_term_memory = LongTermMemory()
+
+        # Load the most recent conversation history for continuity
+        self._load_latest_history()
 
         # Live2D model
         self.live2d = Live2DModel()
@@ -73,6 +78,36 @@ class ServiceContext:
         self.persona_prompt = self._load_persona_prompt(config.character.persona_prompt_path)
 
         logger.info(f"ServiceContext initialized for character: {config.character.name}")
+
+    def _load_latest_history(self):
+        """Load the most recent conversation history for session continuity."""
+        conversations_dir = self.chat_history.storage_dir
+        if not conversations_dir.exists():
+            return
+
+        # Find the most recent conversation file
+        json_files = sorted(
+            conversations_dir.glob("*.json"),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True,
+        )
+
+        if not json_files:
+            return
+
+        # Load the latest one
+        latest = json_files[0].stem
+        if self.chat_history.load(latest):
+            logger.info(f"Restored previous conversation: {latest}")
+
+    @property
+    def full_system_prompt(self) -> str:
+        """Get full system prompt with persona + long-term memory.
+
+        :returns: Combined system prompt string.
+        """
+        memory_section = self.long_term_memory.get_prompt_injection()
+        return self.persona_prompt + memory_section
 
     def _load_persona_prompt(self, path: str) -> str:
         """Load persona prompt from file.
