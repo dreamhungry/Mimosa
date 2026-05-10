@@ -1,0 +1,25 @@
+{
+  "mao_pro": {
+    "name": "Mao Pro",
+    "model_path": "live2d-models/mao_pro/runtime/mao_pro.model3.json",
+    "emotion_map": {
+      "neutral": "exp_01",
+      "joy": "exp_02",
+      "surprise": "exp_03",
+      "sadness": "exp_04",
+      "anger": "exp_05",
+      "fear": "exp_06",
+      "disgust": "exp_07",
+      "love": "exp_08"
+    },
+    "motion_map": {
+      "idle": "motions/mtn_01.motion3.json",
+      "talk": "motions/mtn_02.motion3.json",
+      "nod": "motions/mtn_03.motion3.json",
+      "wave": "motions/mtn_04.motion3.json",
+      "special_happy": "motions/special_01.motion3.json",
+      "special_magic": "motions/special_02.motion3.json",
+      "special_excited": "motions/special_03.motion3.json"
+    }
+  }
+}

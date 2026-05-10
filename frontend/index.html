@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Mimosa - Virtual Companion</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Status Bar -->
+    <header class="status-bar">
+        <div class="status-left">
+            <span class="connection-dot" id="connectionDot"></span>
+            <span class="status-text" id="statusText">Connecting...</span>
+        </div>
+        <div class="status-center">
+            <span class="character-name">🌿 Mimosa</span>
+        </div>
+        <div class="status-right">
+            <span class="emotion-badge" id="emotionBadge">neutral</span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-container">
+        <!-- Live2D Area -->
+        <section class="live2d-area">
+            <canvas id="live2dCanvas"></canvas>
+            <div class="live2d-overlay">
+                <div class="emotion-indicator" id="emotionIndicator">
+                    <span class="emotion-icon">😊</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chat Panel -->
+        <section class="chat-panel">
+            <div class="chat-messages" id="chatMessages">
+                <div class="message-welcome">
+                    <p>Hi! I'm Mimosa 🌿</p>
+                    <p class="subtitle">Your virtual companion. Talk to me via text or voice!</p>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <div class="input-container">
+                    <input
+                        type="text"
+                        id="textInput"
+                        placeholder="Type a message..."
+                        autocomplete="off"
+                    >
+                    <button class="btn-send" id="btnSend" title="Send">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+                <button class="btn-mic" id="btnMic" title="Hold to record">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                    <div class="mic-pulse" id="micPulse"></div>
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Scripts -->
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.x/dist/pixi.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js"></script>
+    <script src="js/websocket.js?v=6"></script>
+    <script src="js/audio.js?v=6"></script>
+    <script src="js/live2d.js?v=6"></script>
+    <script src="js/app.js?v=6"></script>
+</body>
+</html>

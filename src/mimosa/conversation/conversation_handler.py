@@ -1,0 +1,337 @@
+# -*- coding: utf-8 -*-
+"""Conversation handler orchestrating the full dialogue flow."""
+
+import base64
+from typing import Any, Callable, Coroutine, Dict, Optional
+
+import numpy as np
+from loguru import logger
+
+from ..service_context import ServiceContext
+
+
+class ConversationHandler:
+    """Orchestrates the full conversation flow from input to response."""
+
+    # VAD state machine states
+    _STATE_IDLE = "idle"
+    _STATE_LISTENING = "listening"
+    _STATE_SPEAKING = "speaking"
+
+    def __init__(self, context: ServiceContext):
+        """Initialize conversation handler.
+
+        :param context: Service context with all engines.
+        """
+        self.ctx = context
+        self._audio_buffer: list = []
+        self._is_speaking = False
+        self._speech_detected = False
+
+        # Real-time VAD state
+        self._vad_state = self._STATE_IDLE
+        self._silence_samples = 0
+        self._speech_samples = 0
+        self._realtime_mode = False
+        self._send_fn: Optional[Callable] = None
+
+        # VAD parameters (from config)
+        sample_rate = self.ctx.config.asr.sample_rate
+        vad_cfg = self.ctx.config.vad
+        self._min_silence_samples = int(
+            vad_cfg.min_silence_duration_ms * sample_rate / 1000
+        )
+        self._min_speech_samples = int(0.3 * sample_rate)  # 300ms min speech
+        self._vad_chunk_size = int(0.032 * sample_rate)  # 32ms per VAD frame
+
+    def start_realtime_mode(self, send_fn: Callable):
+        """Enter real-time voice mode with server-side VAD.
+
+        :param send_fn: Async function to send messages to client.
+        """
+        self._realtime_mode = True
+        self._send_fn = send_fn
+        self._vad_state = self._STATE_LISTENING
+        self._audio_buffer = []
+        self._silence_samples = 0
+        self._speech_samples = 0
+        self._speech_detected = False
+        self.ctx.vad.reset()
+        logger.info("[VAD] Real-time mode started, listening...")
+
+    def stop_realtime_mode(self):
+        """Exit real-time voice mode."""
+        self._realtime_mode = False
+        self._vad_state = self._STATE_IDLE
+        self._audio_buffer = []
+        self._send_fn = None
+        logger.info("[VAD] Real-time mode stopped")
+
+    async def handle_realtime_audio(
+        self,
+        audio_data: list,
+        send_fn: Callable[[Dict[str, Any]], Coroutine],
+    ) -> bool:
+        """Process real-time audio with server-side VAD.
+
+        Returns True if endpoint was detected and ASR triggered.
+
+        :param audio_data: List of float audio samples.
+        :param send_fn: Async function to send messages.
+        :returns: True if speech endpoint detected.
+        """
+        if not self._realtime_mode:
+            return False
+
+        self._send_fn = send_fn
+        self._audio_buffer.extend(audio_data)
+
+        # Process VAD on incoming chunk
+        audio_chunk = np.array(audio_data, dtype=np.float32)
+
+        if not hasattr(self, '_vad_debug_count'):
+            self._vad_debug_count = 0
+        self._vad_debug_count += 1
+        if self._vad_debug_count <= 3:
+            rms = np.sqrt(np.mean(audio_chunk ** 2)) if len(audio_chunk) > 0 else 0
+            logger.debug(
+                f"[VAD] Audio chunk: samples={len(audio_chunk)}, "
+                f"rms={rms:.6f}, max={np.max(np.abs(audio_chunk)) if len(audio_chunk) > 0 else 0:.4f}"
+            )
+
+        is_speech = self._run_vad(audio_chunk)
+
+        if is_speech:
+            self._speech_samples += len(audio_data)
+            self._silence_samples = 0
+
+            if not self._speech_detected:
+                self._speech_detected = True
+                logger.info("[VAD] Speech detected, recording...")
+                await send_fn({"type": "vad-status", "status": "speech_start"})
+
+        else:
+            if self._speech_detected:
+                self._silence_samples += len(audio_data)
+
+                # Check if silence exceeded threshold (endpoint)
+                if self._silence_samples >= self._min_silence_samples:
+                    logger.info(
+                        f"[VAD] Endpoint detected: "
+                        f"speech={self._speech_samples} samples, "
+                        f"silence={self._silence_samples} samples"
+                    )
+                    await send_fn({"type": "vad-status", "status": "speech_end"})
+
+                    # Only process if enough speech was detected
+                    if self._speech_samples >= self._min_speech_samples:
+                        await self._process_realtime_audio(send_fn)
+                    else:
+                        logger.info("[VAD] Speech too short, discarding")
+
+                    # Reset for next utterance
+                    self._audio_buffer = []
+                    self._silence_samples = 0
+                    self._speech_samples = 0
+                    self._speech_detected = False
+                    self.ctx.vad.reset()
+                    return True
+
+        return False
+
+    def _run_vad(self, audio_chunk: np.ndarray) -> bool:
+        """Run VAD on audio chunk, processing in frame-sized segments.
+
+        :param audio_chunk: Audio samples as float32 array.
+        :returns: True if speech detected in chunk.
+        """
+        # Process in VAD frame-sized chunks
+        speech_frames = 0
+        total_frames = 0
+
+        for i in range(0, len(audio_chunk), self._vad_chunk_size):
+            frame = audio_chunk[i:i + self._vad_chunk_size]
+            if len(frame) < self._vad_chunk_size:
+                break
+            total_frames += 1
+            if self.ctx.vad.is_speech(frame):
+                speech_frames += 1
+
+        if total_frames == 0:
+            return False
+
+        # If majority of frames contain speech
+        return speech_frames > total_frames * 0.3
+
+    async def _process_realtime_audio(
+        self,
+        send_fn: Callable[[Dict[str, Any]], Coroutine],
+    ):
+        """Process accumulated audio from real-time mode.
+
+        :param send_fn: Async function to send messages.
+        """
+        # Trim trailing silence from buffer
+        trim_samples = self._silence_samples
+        if trim_samples > 0 and len(self._audio_buffer) > trim_samples:
+            audio_data = self._audio_buffer[:-trim_samples]
+        else:
+            audio_data = self._audio_buffer
+
+        audio_np = np.array(audio_data, dtype=np.float32)
+        duration = len(audio_np) / self.ctx.config.asr.sample_rate
+        max_val = float(np.max(np.abs(audio_np)))
+
+        logger.info(
+            f"[Audio] Realtime processing: {len(audio_np)} samples, "
+            f"duration={duration:.2f}s, max_amplitude={max_val:.6f}"
+        )
+
+        # Transcribe
+        text = await self.ctx.asr.transcribe(
+            audio_np, self.ctx.config.asr.sample_rate
+        )
+
+        if not text.strip():
+            logger.info("[Audio] ASR returned empty result")
+            await send_fn({"type": "asr-result", "text": ""})
+            return
+
+        logger.info(f"[Audio] ASR result: \"{text}\"")
+        await send_fn({"type": "asr-result", "text": text})
+
+        # Add to history and generate response
+        self.ctx.chat_history.add_message("user", text)
+        await self._generate_response(send_fn)
+
+    async def handle_text_input(
+        self,
+        text: str,
+        send_fn: Callable[[Dict[str, Any]], Coroutine],
+    ):
+        """Handle text input from user.
+
+        :param text: User's text message.
+        :param send_fn: Async function to send response messages back.
+        """
+        if not text.strip():
+            return
+
+        logger.info(f"User text: {text}")
+
+        # Add to history
+        self.ctx.chat_history.add_message("user", text)
+
+        # Get LLM response
+        await self._generate_response(send_fn)
+
+    async def handle_audio_data(self, audio_data: list):
+        """Buffer incoming audio data (manual mode).
+
+        :param audio_data: List of float audio samples.
+        """
+        self._audio_buffer.extend(audio_data)
+
+    async def handle_audio_end(
+        self,
+        send_fn: Callable[[Dict[str, Any]], Coroutine],
+    ):
+        """Process buffered audio after recording ends (manual mode).
+
+        :param send_fn: Async function to send response messages back.
+        """
+        if not self._audio_buffer:
+            logger.warning("[Audio] Empty audio buffer, skipping")
+            return
+
+        # Convert to numpy array
+        audio_np = np.array(self._audio_buffer, dtype=np.float32)
+        buffer_len = len(self._audio_buffer)
+        self._audio_buffer = []
+
+        duration = len(audio_np) / self.ctx.config.asr.sample_rate
+        max_val = float(np.max(np.abs(audio_np)))
+        logger.info(
+            f"[Audio] Processing: {buffer_len} samples, "
+            f"duration={duration:.2f}s, max_amplitude={max_val:.6f}"
+        )
+
+        if max_val < 0.001:
+            logger.warning(
+                "[Audio] Audio amplitude too low (max < 0.001), "
+                "microphone might not be capturing properly"
+            )
+
+        # Transcribe
+        text = await self.ctx.asr.transcribe(audio_np, self.ctx.config.asr.sample_rate)
+
+        if not text.strip():
+            logger.info("[Audio] ASR returned empty result (no speech detected)")
+            await send_fn({"type": "asr-result", "text": ""})
+            return
+
+        logger.info(f"[Audio] ASR result: \"{text}\"")
+
+        # Send transcription to frontend
+        await send_fn({"type": "asr-result", "text": text})
+
+        # Add to history and generate response
+        self.ctx.chat_history.add_message("user", text)
+        await self._generate_response(send_fn)
+
+    async def _generate_response(
+        self,
+        send_fn: Callable[[Dict[str, Any]], Coroutine],
+    ):
+        """Generate and send LLM response with TTS and emotion.
+
+        :param send_fn: Async function to send messages.
+        """
+        messages = self.ctx.chat_history.messages
+
+        # Collect full response for TTS
+        full_response = ""
+
+        # Stream LLM response
+        async for chunk in self.ctx.llm.chat_completion(messages, system=self.ctx.persona_prompt):
+            full_response += chunk
+
+        if not full_response:
+            logger.warning("LLM returned empty response")
+            return
+
+        logger.info(f"LLM response: {full_response[:100]}...")
+
+        # Extract emotion from response
+        clean_text, emotion = self.ctx.live2d.extract_emotion(full_response)
+        expression = self.ctx.live2d.get_expression_name(emotion)
+
+        # Send text response and emotion
+        await send_fn({
+            "type": "llm-response",
+            "text": clean_text,
+            "emotion": emotion,
+            "expression": expression,
+        })
+
+        # Add assistant message to history (clean version without emotion tag)
+        self.ctx.chat_history.add_message("assistant", clean_text)
+
+        # Generate TTS audio
+        audio_bytes = await self.ctx.tts.synthesize(clean_text)
+        if audio_bytes:
+            # Send audio as base64
+            audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+            await send_fn({
+                "type": "tts-audio",
+                "audio": audio_b64,
+                "format": "mp3",
+            })
+
+        # Save history periodically
+        self.ctx.chat_history.save()
+
+    async def handle_interrupt(self):
+        """Handle user interruption signal."""
+        self._is_speaking = False
+        logger.info("Conversation interrupted by user")
