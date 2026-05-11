@@ -32,9 +32,9 @@ conf.yaml
 .DS_Store
 Thumbs.db
 
-# Data files
-conversations/
-memory/
+# Data files (runtime-generated, root-level only)
+/conversations/
+/memory/
 *.wav
 *.mp3
 
