@@ -25,6 +25,11 @@ build/
 # Local config (use conf.yaml.example as template)
 conf.yaml
 
+# Character personality files (use .example as template)
+character/personality.yaml
+character/personality_state.yaml
+character/evolution_history.jsonl
+
 # Logs
 *.log
 

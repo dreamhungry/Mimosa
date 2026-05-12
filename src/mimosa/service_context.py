@@ -14,6 +14,7 @@ from .llm.llm_factory import create_llm
 from .llm.llm_interface import LLMInterface
 from .memory.chat_history import ChatHistory
 from .memory.long_term_memory import LongTermMemory
+from .personality import PersonalityManager
 from .tts.tts_factory import create_tts
 from .tts.tts_interface import TTSInterface
 from .vad.vad_factory import create_vad
@@ -67,6 +68,11 @@ class ServiceContext:
         self.chat_history = ChatHistory()
         self.long_term_memory = LongTermMemory()
 
+        # Personality
+        self.personality = PersonalityManager(
+            config_dir=config.personality.config_dir
+        )
+
         # Load the most recent conversation history for continuity
         self._load_latest_history()
 
@@ -102,12 +108,13 @@ class ServiceContext:
 
     @property
     def full_system_prompt(self) -> str:
-        """Get full system prompt with persona + long-term memory.
+        """Get full system prompt with persona + personality + long-term memory.
 
         :returns: Combined system prompt string.
         """
+        personality_section = self.personality.get_prompt_section()
         memory_section = self.long_term_memory.get_prompt_injection()
-        return self.persona_prompt + memory_section
+        return self.persona_prompt + personality_section + memory_section
 
     def _load_persona_prompt(self, path: str) -> str:
         """Load persona prompt from file.

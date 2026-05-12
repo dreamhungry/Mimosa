@@ -142,6 +142,9 @@ class WebSocketHandler:
             # Extract long-term memory in background (non-blocking)
             asyncio.create_task(self._extract_memory(handler))
 
+            # Evolve personality in background (non-blocking)
+            asyncio.create_task(self._evolve_personality(handler))
+
         logger.info(f"Client disconnected: {client_id}")
 
     async def _extract_memory(self, handler: ConversationHandler):
@@ -180,6 +183,34 @@ class WebSocketHandler:
 
         except Exception as e:
             logger.error(f"Memory extraction failed: {e}")
+
+    async def _evolve_personality(self, handler: ConversationHandler):
+        """Evolve personality based on the full session conversation.
+
+        :param handler: The conversation handler with history.
+        """
+        from .personality import PersonalityEvolver
+
+        if not handler.ctx.personality.evolution_config.enabled:
+            return
+
+        messages = handler.ctx.chat_history.messages
+        if len(messages) < 4:
+            return
+
+        conversation_lines = []
+        for msg in messages:
+            role = "User" if msg["role"] == "user" else "Mimosa"
+            conversation_lines.append(f"{role}: {msg['content']}")
+        conversation_text = "\n".join(conversation_lines)
+
+        try:
+            evolver = PersonalityEvolver(handler.ctx.personality, handler.ctx.llm)
+            changed = await evolver.evolve(conversation_text)
+            if changed:
+                logger.info("Session-end personality evolution: updated")
+        except Exception as e:
+            logger.error(f"Session-end personality evolution failed: {e}")
 
     async def _send(self, websocket: WebSocket, message: dict):
         """Send a JSON message to a WebSocket client.

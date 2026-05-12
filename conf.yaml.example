@@ -48,3 +48,6 @@ vad:
 
 memory:
   extraction_interval: 10  # Extract long-term memory every N conversation turns
+
+personality:
+  config_dir: "character"  # Directory containing personality.yaml and state files

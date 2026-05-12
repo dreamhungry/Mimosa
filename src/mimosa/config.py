@@ -70,6 +70,16 @@ class MemoryConfig(BaseModel):
     extraction_interval: int = 10  # Extract memory every N conversation turns
 
 
+class PersonalityMetaConfig(BaseModel):
+    """Personality system meta-configuration (paths and overrides).
+
+    Actual personality values live in character/personality.yaml.
+    This section only controls where to find them and runtime behavior.
+    """
+
+    config_dir: str = "character"  # Directory containing personality files
+
+
 class CharacterConfig(BaseModel):
     """Character personality configuration."""
 
@@ -88,6 +98,7 @@ class MimosaConfig(BaseModel):
     tts: TTSConfig = TTSConfig()
     vad: VADConfig = VADConfig()
     memory: MemoryConfig = MemoryConfig()
+    personality: PersonalityMetaConfig = PersonalityMetaConfig()
     cache_dir: str = ""
 
 

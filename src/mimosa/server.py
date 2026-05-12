@@ -8,6 +8,7 @@ from loguru import logger
 
 from .config import MimosaConfig
 from .routes import create_ws_router
+from .api_routes import create_api_router
 from .service_context import ServiceContext
 
 
@@ -38,6 +39,10 @@ def create_app(config: MimosaConfig) -> FastAPI:
     # Register WebSocket routes
     ws_router = create_ws_router(context)
     app.include_router(ws_router)
+
+    # Register REST API routes
+    api_router = create_api_router(context)
+    app.include_router(api_router)
 
     # Serve Live2D model files
     app.mount(

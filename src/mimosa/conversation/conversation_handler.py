@@ -33,6 +33,10 @@ class ConversationHandler:
         self._turn_count = 0
         self._extraction_interval = self.ctx.config.memory.extraction_interval
 
+        # Personality evolution: track turns separately
+        self._evolution_interval = self.ctx.personality.evolution_config.interval
+        self._evolution_enabled = self.ctx.personality.evolution_config.enabled
+
         # Real-time VAD state
         self._vad_state = self._STATE_IDLE
         self._silence_samples = 0
@@ -341,6 +345,11 @@ class ConversationHandler:
         if self._turn_count % self._extraction_interval == 0:
             asyncio.create_task(self._extract_memory_periodic())
 
+        # Periodic personality evolution every N turns
+        if (self._evolution_enabled
+                and self._turn_count % self._evolution_interval == 0):
+            asyncio.create_task(self._evolve_personality_periodic())
+
     async def handle_interrupt(self):
         """Handle user interruption signal."""
         self._is_speaking = False
@@ -385,3 +394,34 @@ class ConversationHandler:
 
         except Exception as e:
             logger.error(f"Periodic memory extraction failed: {e}")
+
+    async def _evolve_personality_periodic(self):
+        """Evolve personality based on recent conversation patterns.
+
+        Triggered every N turns (configured by evolution.interval).
+        """
+        from ..personality import PersonalityEvolver
+
+        messages = self.ctx.chat_history.messages
+        if len(messages) < 4:
+            return
+
+        # Analyze recent conversation window
+        window = self._evolution_interval * 2
+        recent_messages = messages[-window:]
+
+        conversation_lines = []
+        for msg in recent_messages:
+            role = "User" if msg["role"] == "user" else "Mimosa"
+            conversation_lines.append(f"{role}: {msg['content']}")
+        conversation_text = "\n".join(conversation_lines)
+
+        try:
+            evolver = PersonalityEvolver(self.ctx.personality, self.ctx.llm)
+            changed = await evolver.evolve(conversation_text)
+            if changed:
+                logger.info(
+                    f"Periodic personality evolution (turn {self._turn_count}): updated"
+                )
+        except Exception as e:
+            logger.error(f"Periodic personality evolution failed: {e}")
