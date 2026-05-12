@@ -240,6 +240,46 @@ class PersonalityManager:
         self._state = self._create_state_from_config()
         self._save_state()
 
+    def update_state(
+        self,
+        big_five: dict | None = None,
+        style: dict | None = None,
+    ):
+        """Update personality state with new values and persist.
+
+        :param big_five: Dict of trait overrides (e.g. {"openness": 75}).
+        :param style: Dict of style overrides (e.g. {"humor_style": "witty"}).
+        :raises ValueError: If any value is out of valid range.
+        """
+        if big_five:
+            for key, value in big_five.items():
+                if not hasattr(self.state.big_five, key):
+                    raise ValueError(f"Unknown Big Five trait: {key}")
+                if not isinstance(value, int) or not (0 <= value <= 100):
+                    raise ValueError(
+                        f"Trait {key} must be an integer 0~100, got {value}"
+                    )
+                setattr(self.state.big_five, key, value)
+
+        if style:
+            valid_humor = {"gentle", "witty", "sarcastic", "dry"}
+            if "humor_style" in style:
+                if style["humor_style"] not in valid_humor:
+                    raise ValueError(
+                        f"humor_style must be one of {valid_humor}"
+                    )
+                self.state.style.humor_style = style["humor_style"]
+            if "speech_formality" in style:
+                val = style["speech_formality"]
+                if not isinstance(val, int) or not (0 <= val <= 100):
+                    raise ValueError(
+                        "speech_formality must be an integer 0~100"
+                    )
+                self.state.style.speech_formality = val
+
+        self._save_state()
+        logger.info("Personality state updated via API")
+
     def save_state(self):
         """Persist current state to disk (public wrapper)."""
         self._save_state()

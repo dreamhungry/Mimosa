@@ -85,6 +85,51 @@ class ServiceContext:
 
         logger.info(f"ServiceContext initialized for character: {config.character.name}")
 
+    def update_llm_config(
+        self,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        api_key: str | None = None,
+    ):
+        """Hot-reload LLM configuration without restarting the server.
+
+        :param model: New model name (optional).
+        :param temperature: New temperature 0~2 (optional).
+        :param max_tokens: New max tokens (optional).
+        :param api_key: New API key (optional, empty string keeps old).
+        :raises ValueError: If parameter values are invalid.
+        """
+        updates = {}
+
+        if model is not None:
+            updates["model"] = model
+
+        if temperature is not None:
+            if not (0 <= temperature <= 2):
+                raise ValueError("temperature must be between 0 and 2")
+            updates["temperature"] = temperature
+
+        if max_tokens is not None:
+            if max_tokens < 1:
+                raise ValueError("max_tokens must be positive")
+            updates["max_tokens"] = max_tokens
+
+        if api_key is not None and api_key.strip():
+            updates["api_key"] = api_key
+
+        if not updates:
+            return
+
+        # Update config model
+        self.config = self.config.model_copy(
+            update={"llm": self.config.llm.model_copy(update=updates)}
+        )
+
+        # Recreate LLM instance with new config
+        self.llm = create_llm(self.config.llm)
+        logger.info(f"LLM config hot-reloaded: {list(updates.keys())}")
+
     def _load_latest_history(self):
         """Load the most recent conversation history for session continuity."""
         conversations_dir = self.chat_history.storage_dir
