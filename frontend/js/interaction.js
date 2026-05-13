@@ -181,12 +181,14 @@ class InteractionManager {
     /**
      * Play only a random motion without showing a speech bubble.
      * Used when LLM interaction is triggered to avoid double-display.
+     * Priority=2 (NORMAL) can interrupt idle motions while preserving expression
+     * (pixi-live2d-display defaults preserveExpressionOnMotion=true).
      */
     _playMotionOnly() {
         const motionIdx = this._motionIndices[
             Math.floor(Math.random() * this._motionIndices.length)
         ];
-        this.live2d.playMotion('', motionIdx);
+        this.live2d.playMotion('', motionIdx, 2);
     }
 
     /**
@@ -194,11 +196,11 @@ class InteractionManager {
      * Phrases are drawn from the combined pool (static config + LLM cache).
      */
     _playInstantReaction() {
-        // 1. Random motion
+        // 1. Random motion (priority=2/NORMAL so it can interrupt idle)
         const motionIdx = this._motionIndices[
             Math.floor(Math.random() * this._motionIndices.length)
         ];
-        this.live2d.playMotion('', motionIdx);
+        this.live2d.playMotion('', motionIdx, 2);
 
         // 2. Random emoji on the emotion indicator
         const emoji = this._emojis[Math.floor(Math.random() * this._emojis.length)];

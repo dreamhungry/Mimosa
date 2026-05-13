@@ -24,6 +24,7 @@ class Live2DManager {
         // Timer for auto-resetting expression to neutral
         this._emotionResetTimer = null;
         this._neutralExpression = null; // Will be set from model config
+        this._currentExpression = null; // Track active expression for clean switching
     }
 
     /**
@@ -110,6 +111,8 @@ class Live2DManager {
 
     /**
      * Set expression by name.
+     * Calls ExpressionManager.setExpression() which automatically fades out
+     * the current expression and fades in the new one.
      * @param {string} expressionName - Expression name (e.g., 'exp_01').
      */
     setExpression(expressionName) {
@@ -117,9 +120,38 @@ class Live2DManager {
 
         try {
             this.model.expression(expressionName);
+            this._currentExpression = expressionName;
             console.log('[Live2D] Expression set:', expressionName);
         } catch (e) {
             console.warn('[Live2D] Failed to set expression:', expressionName, e);
+        }
+    }
+
+    /**
+     * Force-reset expression to neutral via the internal ExpressionManager API.
+     * This bypasses the "same index" guard in setExpression() so it always works,
+     * even if the manager thinks the current expression is already neutral.
+     */
+    resetToNeutral() {
+        if (!this.model || !this.isLoaded) return;
+
+        try {
+            const mgr = this.model.internalModel?.motionManager?.expressionManager;
+            if (mgr) {
+                // resetExpression() sets the default (empty) expression,
+                // then setExpression(neutral) sets the actual neutral.
+                mgr.resetExpression();
+                if (this._neutralExpression) {
+                    this.model.expression(this._neutralExpression);
+                    this._currentExpression = this._neutralExpression;
+                }
+                console.log('[Live2D] Force reset to neutral expression');
+            } else {
+                // Fallback to normal API
+                this.setExpression(this._neutralExpression);
+            }
+        } catch (e) {
+            console.warn('[Live2D] Failed to reset expression:', e);
         }
     }
 
@@ -156,16 +188,11 @@ class Live2DManager {
             this.setExpression(expressionName);
         }
 
-        // Play a random motion for liveliness
+        // Auto-reset to neutral after 4 seconds (skip for neutral itself)
         if (emotion !== 'neutral') {
-            this.playMotion('', Math.floor(Math.random() * 3));
-
-            // Auto-reset to neutral after 4 seconds
             this._emotionResetTimer = setTimeout(() => {
                 this._emotionResetTimer = null;
-                if (this._neutralExpression) {
-                    this.setExpression(this._neutralExpression);
-                }
+                this.resetToNeutral();
                 // Reset emotion indicator
                 const ind = document.getElementById('emotionIndicator');
                 if (ind) {
