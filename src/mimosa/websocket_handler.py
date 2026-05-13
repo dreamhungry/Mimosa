@@ -41,6 +41,7 @@ class WebSocketHandler:
             "type": "connected",
             "message": f"Welcome! I'm {self.context.config.character.name}.",
             "model_path": self.context.live2d.get_model_path(),
+            "neutral_expression": self.context.live2d.get_expression_name("neutral"),
         })
 
         try:

@@ -87,6 +87,10 @@ console.log('[App] app.js loaded');
                 if (message.model_path) {
                     live2d.loadModel('/' + message.model_path);
                 }
+                // Store neutral expression name for auto-reset
+                if (message.neutral_expression) {
+                    live2d._neutralExpression = message.neutral_expression;
+                }
                 addSystemMessage(message.message || 'Connected!');
                 break;
 

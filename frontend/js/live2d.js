@@ -20,6 +20,10 @@ class Live2DManager {
             disgust: '😖',
             love: '🥰',
         };
+
+        // Timer for auto-resetting expression to neutral
+        this._emotionResetTimer = null;
+        this._neutralExpression = null; // Will be set from model config
     }
 
     /**
@@ -81,12 +85,14 @@ class Live2DManager {
             this.model.y = this.app.screen.height / 2;
             this.model.anchor.set(0.5, 0.5);
 
-            // Enable mouse tracking (look at cursor)
+            // Enable interaction
             this.model.interactive = true;
-            this.model.trackedPointers = {};
 
             // Add to stage
             this.app.stage.addChild(this.model);
+
+            // Enable mouse focus tracking (eyes/head follow cursor)
+            this._setupMouseTracking();
 
             this.isLoaded = true;
             console.log('[Live2D] Model loaded successfully');
@@ -140,6 +146,12 @@ class Live2DManager {
      * @param {string} expressionName - Expression file name from model.
      */
     setEmotion(emotion, expressionName) {
+        // Clear any pending reset timer
+        if (this._emotionResetTimer) {
+            clearTimeout(this._emotionResetTimer);
+            this._emotionResetTimer = null;
+        }
+
         if (expressionName) {
             this.setExpression(expressionName);
         }
@@ -147,6 +159,20 @@ class Live2DManager {
         // Play a random motion for liveliness
         if (emotion !== 'neutral') {
             this.playMotion('', Math.floor(Math.random() * 3));
+
+            // Auto-reset to neutral after 4 seconds
+            this._emotionResetTimer = setTimeout(() => {
+                this._emotionResetTimer = null;
+                if (this._neutralExpression) {
+                    this.setExpression(this._neutralExpression);
+                }
+                // Reset emotion indicator
+                const ind = document.getElementById('emotionIndicator');
+                if (ind) {
+                    ind.querySelector('.emotion-icon').textContent = '😊';
+                }
+                console.log('[Live2D] Expression auto-reset to neutral');
+            }, 4000);
         }
 
         // Update emotion indicator
@@ -168,6 +194,37 @@ class Live2DManager {
         } catch (e) {
             // Idle motion may not exist, ignore
         }
+    }
+
+    /**
+     * Setup mouse tracking so the model's eyes/head follow the cursor.
+     * Uses model.focus(x, y) from pixi-live2d-display.
+     */
+    _setupMouseTracking() {
+        const canvas = document.getElementById(this.canvasId);
+        if (!canvas) return;
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!this.model || !this.isLoaded) return;
+
+            // Convert mouse position to model-relative coordinates
+            // model.focus expects coordinates relative to the canvas
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            this.model.focus(x, y);
+        });
+
+        // Reset focus when mouse leaves the canvas
+        canvas.addEventListener('mouseleave', () => {
+            if (!this.model || !this.isLoaded) return;
+            // Focus center to reset gaze
+            const rect = canvas.getBoundingClientRect();
+            this.model.focus(rect.width / 2, rect.height / 2);
+        });
+
+        console.log('[Live2D] Mouse tracking enabled');
     }
 
     /**
