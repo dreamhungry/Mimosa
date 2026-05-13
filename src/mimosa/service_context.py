@@ -9,6 +9,7 @@ from loguru import logger
 from .asr.asr_factory import create_asr
 from .asr.asr_interface import ASRInterface
 from .config import MimosaConfig
+from .conversation.interaction_phrase_pool import InteractionPhrasePool
 from .live2d.live2d_model import Live2DModel
 from .llm.llm_factory import create_llm
 from .llm.llm_interface import LLMInterface
@@ -67,6 +68,9 @@ class ServiceContext:
         # Memory
         self.chat_history = ChatHistory()
         self.long_term_memory = LongTermMemory()
+
+        # Interaction phrase pool (LLM-generated click responses)
+        self.interaction_phrases = InteractionPhrasePool()
 
         # Personality
         self.personality = PersonalityManager(

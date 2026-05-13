@@ -118,6 +118,19 @@ class WebSocketHandler:
                     "message": "Real-time voice mode ended",
                 })
 
+            elif msg_type == "interaction":
+                await handler.handle_interaction(
+                    trigger=message.get("trigger", "click"),
+                    send_fn=lambda msg: self._send(websocket, msg),
+                )
+
+            elif msg_type == "get-interaction-phrases":
+                # Return cached LLM-generated phrases to client
+                await self._send(websocket, {
+                    "type": "interaction-phrases",
+                    "phrases": self.context.interaction_phrases.phrases,
+                })
+
             elif msg_type == "interrupt":
                 await handler.handle_interrupt()
 

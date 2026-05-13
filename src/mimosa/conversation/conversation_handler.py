@@ -3,6 +3,7 @@
 
 import asyncio
 import base64
+import random
 from typing import Any, Callable, Coroutine, Dict, Optional
 
 import numpy as np
@@ -354,6 +355,78 @@ class ConversationHandler:
         """Handle user interruption signal."""
         self._is_speaking = False
         logger.info("Conversation interrupted by user")
+
+    # Random variation pools for interaction prompts
+    _INTERACTION_MOODS = [
+        "sleepy", "energetic", "shy", "playful", "mischievous",
+        "dreamy", "grumpy but cute", "excited", "clingy", "tsundere",
+    ]
+    _INTERACTION_SCENARIOS = [
+        "you were daydreaming",
+        "you were humming a tune",
+        "you were reading something interesting",
+        "you were about to doze off",
+        "you were practicing magic spells",
+        "you were stretching lazily",
+        "you were lost in thought",
+        "you were doodling",
+        "you were counting stars",
+        "you were playing with your hair",
+    ]
+
+    async def handle_interaction(
+        self,
+        trigger: str,
+        send_fn: Callable[[Dict[str, Any]], Coroutine],
+    ):
+        """Handle a click interaction request.
+
+        Generates a short, playful LLM response without adding to chat history.
+
+        :param trigger: Interaction trigger type (e.g., 'click').
+        :param send_fn: Async function to send messages.
+        """
+        mood = random.choice(self._INTERACTION_MOODS)
+        scenario = random.choice(self._INTERACTION_SCENARIOS)
+
+        interaction_prompt = (
+            f"The user just poked/clicked on you. "
+            f"Right now you are feeling {mood}, and {scenario}. "
+            f"Respond with a very short, playful reaction (1 sentence max, under 30 words). "
+            f"Be cute and expressive. Do NOT repeat phrases you've used before. "
+            f"Include an emotion tag at the start like [joy], [surprise], [love], etc. "
+            f"Do NOT greet. Just react naturally as if someone poked you."
+        )
+
+        try:
+            full_response = ""
+            async for chunk in self.ctx.llm.chat_completion(
+                [{"role": "user", "content": interaction_prompt}],
+                system=self.ctx.full_system_prompt,
+            ):
+                full_response += chunk
+
+            if not full_response:
+                return
+
+            # Extract emotion from response
+            clean_text, emotion = self.ctx.live2d.extract_emotion(full_response)
+            expression = self.ctx.live2d.get_expression_name(emotion)
+
+            # Cache phrase for future reuse
+            self.ctx.interaction_phrases.add(clean_text)
+
+            await send_fn({
+                "type": "interaction-response",
+                "text": clean_text,
+                "emotion": emotion,
+                "expression": expression,
+            })
+
+            logger.info(f"Interaction response: {clean_text[:80]}")
+
+        except Exception as e:
+            logger.error(f"Interaction LLM failed: {e}")
 
     async def _extract_memory_periodic(self):
         """Extract key facts from recent conversation and update long-term memory.

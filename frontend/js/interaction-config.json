@@ -1,0 +1,38 @@
+{
+  "cooldownMs": 2000,
+  "llmThreshold": 3,
+  "llmProbability": 0.5,
+  "bubbleDurationMs": 3000,
+
+  "phrases": [
+    "Ehehe~ you poked me! \u2764",
+    "Nyaa~ what is it~?",
+    "That tickles~! \u2728",
+    "Hehe, I knew you'd come~",
+    "Pat pat? Pat pat! \u2728",
+    "Waaah~ don't startle me!",
+    "Mmm~ I'm right here \u2661",
+    "Poke poke~ are you bored?",
+    "Uuu~ be gentle with me~",
+    "Yay~ attention! \u2665",
+    "Mou~ I was napping...",
+    "Hmpf! ...okay fine, hehe~",
+    "Do you wanna play~? \u2606",
+    "Zzz... huh?! I'm awake!",
+    "Rawr~ \u2661 just kidding~",
+    "Ehh~ what what what~?",
+    "Fufu~ you like me that much?",
+    "Boop! Right back at you~",
+    "Mmm~ headpats accepted \u2764",
+    "Kyaa~ so sudden!"
+  ],
+
+  "emojis": [
+    "\ud83d\ude0a", "\ud83d\ude04", "\ud83e\udd70", "\ud83d\ude33",
+    "\u2728", "\ud83d\udcab", "\ud83c\udf1f", "\ud83d\ude3b",
+    "\ud83c\udf80", "\ud83c\udf38", "\ud83d\udc96", "\ud83d\udc97",
+    "\ud83e\udee3", "\ud83d\ude1a", "\ud83d\ude18", "\u2764\ufe0f"
+  ],
+
+  "motionIndices": [0, 1, 2, 3, 4, 5]
+}

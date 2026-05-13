@@ -34,6 +34,7 @@ class OpenAICompatibleLLM(LLMInterface):
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.last_usage = None  # Token usage from last call
 
         # Use "sk-no-key" placeholder for local models without auth
         effective_key = api_key if api_key else "sk-no-key"
@@ -62,6 +63,8 @@ class OpenAICompatibleLLM(LLMInterface):
 
         full_messages.extend(messages)
 
+        self.last_usage = None
+
         try:
             stream = await self.client.chat.completions.create(
                 model=self.model,
@@ -69,11 +72,23 @@ class OpenAICompatibleLLM(LLMInterface):
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
                 stream=True,
+                stream_options={"include_usage": True},
             )
 
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
+                # Last chunk carries token usage info
+                if chunk.usage:
+                    self.last_usage = chunk.usage
+
+            # Log token consumption
+            if self.last_usage:
+                logger.info(
+                    f"[Token] prompt={self.last_usage.prompt_tokens}, "
+                    f"completion={self.last_usage.completion_tokens}, "
+                    f"total={self.last_usage.total_tokens}"
+                )
 
         except Exception as e:
             logger.error(f"LLM API error: {e}")

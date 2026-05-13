@@ -121,13 +121,14 @@ class Live2DManager {
      * Play a motion by group and index.
      * @param {string} group - Motion group name.
      * @param {number} index - Motion index in group.
+     * @param {number} [priority=3] - Motion priority (3=FORCE, interrupts current motion).
      */
-    playMotion(group = '', index = 0) {
+    playMotion(group = '', index = 0, priority = 3) {
         if (!this.model || !this.isLoaded) return;
 
         try {
-            this.model.motion(group, index);
-            console.log('[Live2D] Motion played:', group, index);
+            this.model.motion(group, index, priority);
+            console.log('[Live2D] Motion played:', group, index, 'priority:', priority);
         } catch (e) {
             console.warn('[Live2D] Failed to play motion:', e);
         }

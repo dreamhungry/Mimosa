@@ -14,6 +14,7 @@ console.log('[App] app.js loaded');
     const ws = new MimosaWebSocket(wsUrl);
     const audio = new AudioManager();
     const live2d = new Live2DManager('live2dCanvas');
+    const interaction = new InteractionManager(live2d, ws);
 
     // DOM elements
     const connectionDot = document.getElementById('connectionDot');
@@ -40,6 +41,9 @@ console.log('[App] app.js loaded');
         // Setup UI events
         setupUI();
 
+        // Initialize click interaction handler
+        await interaction.init();
+
         // Connect
         ws.connect();
 
@@ -54,6 +58,8 @@ console.log('[App] app.js loaded');
         ws.onConnected = () => {
             connectionDot.classList.add('connected');
             statusText.textContent = 'Connected';
+            // Fetch cached interaction phrases from backend
+            interaction.requestCachedPhrases();
         };
 
         ws.onDisconnected = () => {
@@ -98,6 +104,14 @@ console.log('[App] app.js loaded');
                 if (message.audio) {
                     audio.queueAudio(message.audio);
                 }
+                break;
+
+            case 'interaction-response':
+                interaction.handleLlmResponse(message);
+                break;
+
+            case 'interaction-phrases':
+                interaction.handlePhrasesResponse(message.phrases);
                 break;
 
             case 'asr-result':
