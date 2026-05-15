@@ -30,14 +30,6 @@ class ConversationHandler:
         self._is_speaking = False
         self._speech_detected = False
 
-        # Memory extraction: track conversation turns
-        self._turn_count = 0
-        self._extraction_interval = self.ctx.config.memory.extraction_interval
-
-        # Personality evolution: track turns separately
-        self._evolution_interval = self.ctx.personality.evolution_config.interval
-        self._evolution_enabled = self.ctx.personality.evolution_config.enabled
-
         # Real-time VAD state
         self._vad_state = self._STATE_IDLE
         self._silence_samples = 0
@@ -295,15 +287,20 @@ class ConversationHandler:
     ):
         """Generate and send LLM response with TTS and emotion.
 
+        Core text logic (LLM call, history, memory extraction, personality
+        evolution) is delegated to AgentCore. This method adds the media
+        layer: Live2D emotion extraction and TTS synthesis.
+
         :param send_fn: Async function to send messages.
         """
-        messages = self.ctx.chat_history.messages
-
-        # Collect full response for TTS
-        full_response = ""
+        agent = self.ctx.agent
+        messages = agent.chat_history.messages
 
         # Stream LLM response (system prompt includes long-term memory)
-        async for chunk in self.ctx.llm.chat_completion(messages, system=self.ctx.full_system_prompt):
+        full_response = ""
+        async for chunk in agent.llm.chat_completion(
+            messages, system=agent.full_system_prompt
+        ):
             full_response += chunk
 
         if not full_response:
@@ -312,7 +309,7 @@ class ConversationHandler:
 
         logger.info(f"LLM response: {full_response[:100]}...")
 
-        # Extract emotion from response
+        # Extract emotion from response (media layer)
         clean_text, emotion = self.ctx.live2d.extract_emotion(full_response)
         expression = self.ctx.live2d.get_expression_name(emotion)
 
@@ -325,9 +322,9 @@ class ConversationHandler:
         })
 
         # Add assistant message to history (clean version without emotion tag)
-        self.ctx.chat_history.add_message("assistant", clean_text)
+        agent.chat_history.add_message("assistant", clean_text)
 
-        # Generate TTS audio
+        # Generate TTS audio (media layer)
         audio_bytes = await self.ctx.tts.synthesize(clean_text)
         if audio_bytes:
             # Send audio as base64
@@ -338,18 +335,13 @@ class ConversationHandler:
                 "format": "mp3",
             })
 
-        # Save history periodically
-        self.ctx.chat_history.save()
+        # Save history
+        agent.chat_history.save()
 
-        # Periodic memory extraction every N turns
-        self._turn_count += 1
-        if self._turn_count % self._extraction_interval == 0:
-            asyncio.create_task(self._extract_memory_periodic())
-
-        # Periodic personality evolution every N turns
-        if (self._evolution_enabled
-                and self._turn_count % self._evolution_interval == 0):
-            asyncio.create_task(self._evolve_personality_periodic())
+        # Periodic memory extraction and personality evolution (delegated to AgentCore)
+        agent._turn_count += 1
+        asyncio.create_task(agent._maybe_extract_memory())
+        asyncio.create_task(agent._maybe_evolve_personality())
 
     async def handle_interrupt(self):
         """Handle user interruption signal."""
@@ -429,72 +421,17 @@ class ConversationHandler:
             logger.error(f"Interaction LLM failed: {e}")
 
     async def _extract_memory_periodic(self):
-        """Extract key facts from recent conversation and update long-term memory.
+        """Extract key facts from recent conversation (delegated to AgentCore).
 
-        Triggered every N turns (configured by memory.extraction_interval).
+        Kept for backward compatibility. New code should use
+        agent._maybe_extract_memory() directly.
         """
-        messages = self.ctx.chat_history.messages
-        if len(messages) < 2:
-            return
-
-        # Only analyze messages from the recent interval window
-        window = self._extraction_interval * 2  # user + assistant pairs
-        recent_messages = messages[-window:]
-
-        conversation_lines = []
-        for msg in recent_messages:
-            role = "User" if msg["role"] == "user" else "Mimosa"
-            conversation_lines.append(f"{role}: {msg['content']}")
-        conversation_text = "\n".join(conversation_lines)
-
-        extraction_prompt = self.ctx.long_term_memory.build_extraction_prompt(
-            conversation_text
-        )
-
-        try:
-            extraction_result = ""
-            async for chunk in self.ctx.llm.chat_completion(
-                [{"role": "user", "content": extraction_prompt}],
-                system="You are a precise fact extraction assistant. Follow instructions exactly.",
-            ):
-                extraction_result += chunk
-
-            self.ctx.long_term_memory.update_from_extraction(extraction_result)
-            logger.info(
-                f"Periodic memory extraction (turn {self._turn_count}): "
-                f"{extraction_result[:100]}..."
-            )
-
-        except Exception as e:
-            logger.error(f"Periodic memory extraction failed: {e}")
+        await self.ctx.agent._maybe_extract_memory()
 
     async def _evolve_personality_periodic(self):
-        """Evolve personality based on recent conversation patterns.
+        """Evolve personality based on recent conversation (delegated to AgentCore).
 
-        Triggered every N turns (configured by evolution.interval).
+        Kept for backward compatibility. New code should use
+        agent._maybe_evolve_personality() directly.
         """
-        from ..personality import PersonalityEvolver
-
-        messages = self.ctx.chat_history.messages
-        if len(messages) < 4:
-            return
-
-        # Analyze recent conversation window
-        window = self._evolution_interval * 2
-        recent_messages = messages[-window:]
-
-        conversation_lines = []
-        for msg in recent_messages:
-            role = "User" if msg["role"] == "user" else "Mimosa"
-            conversation_lines.append(f"{role}: {msg['content']}")
-        conversation_text = "\n".join(conversation_lines)
-
-        try:
-            evolver = PersonalityEvolver(self.ctx.personality, self.ctx.llm)
-            changed = await evolver.evolve(conversation_text)
-            if changed:
-                logger.info(
-                    f"Periodic personality evolution (turn {self._turn_count}): updated"
-                )
-        except Exception as e:
-            logger.error(f"Periodic personality evolution failed: {e}")
+        await self.ctx.agent._maybe_evolve_personality()

@@ -241,18 +241,84 @@ SOP 写法模板：
 
 ---
 
-## 6. 候选论文标题（备忘）
+## 6. 论文类型与候选标题
+
+### 论文类型定位：Empirical Phenomenon Study（路线 1）
+
+本工作的论文类型 **不是 benchmark**（不提供标准化任务集 + 多 baseline leaderboard），而是
+**经验性现象研究（empirical phenomenon study）** —— 发现、量化并解释 LLM 自演化人格中的 drift / collapse / reversibility 现象。
+
+类比已发表工作：*Sycophancy in LLMs*、*The Reversal Curse*、*Emergent Abilities* 这一系列短小精干的 phenomenon paper。
+
+> 命名后缀注意：**不要用 `-Bench` / `-Eval`**（名实不符，会被审稿人质疑）。
+> 直接用现象词作为项目名：**`persona-drift`**。
+
+### 候选论文标题
 
 - *Does Self-Evolving Personality in LLM-based Companions Drift Faithfully or Collapse? An Empirical Study of Bias, Symmetry, and Reversibility*
 - *Mirror or Prior? Disentangling User Influence and LLM Bias in Self-Evolving Companion Agents*
 - *On the Reversibility of Personality Drift in Long-term LLM Companions*
+- *An Empirical Study of Personality Drift in LLM Companions*
 
 ---
 
 ## 7. 实施阶段（执行视角）
 
+### 7.1 仓库结构决策：双仓库 + 模式 3（手动同步）
+
 ```
-Phase 1  申请前必做（核心 contribution）
+                         ┌──────────────────────────────────┐
+                         │  Mimosa（产品 / 简历主项目）        │
+                         │  - 完整产品形态                    │
+                         │  - ASR/TTS/Live2D/Web UI          │
+                         │  - 长期演进，目标是产品            │
+                         └────────────┬─────────────────────┘
+                                      │
+                       回流（手动）↑    │ ↓ 抽取核心模块（手动 copy）
+                                      │
+                         ┌────────────┴─────────────────────┐
+                         │  persona-drift（论文 artifact）   │  ← 新仓库
+                         │  - 纯命令行，pip install 即跑      │
+                         │  - 只含 LLM/history/memory/       │
+                         │    personality/evolver            │
+                         │  - simulated_user + experiments   │
+                         │  - 论文 supplementary material    │
+                         └──────────────────────────────────┘
+```
+
+**仓库定位**：
+- **Mimosa**：简历主项目、产品故事、demo 给老师看；保留所有工程复杂度
+- **persona-drift**：论文 reproducibility artifact；最小依赖（openai + pydantic + pyyaml + loguru），pip install < 10 秒；审稿人可独立复现
+
+**同步模式（模式 3：子树副本，双向手动同步）**：
+- persona-drift 是 Mimosa 核心模块的"研究版"，可加 judge / metrics / 对照配置等 Mimosa 不需要的内容
+- 核心算法（evolver / memory selector）保持等价但不强求逐字一致
+- 论文里的实验性改动（如 evolver prompt 消融）**不污染产品**
+- evolver 只有 ~250 行，手动同步零成本
+
+**简历/申请文案**：
+- 主述：Mimosa（产品 + research vision）
+- 一行带过：`research artifact released as persona-drift`
+
+### 7.2 路线选择：走路线 1（纯现象论文）
+
+取舍依据：
+- 单兵作战，工作量可控
+- empirical study 在顶会有先例，少数人也能做出 high-impact
+- 不强求实现 N 个 baseline 方法，避免工作量翻倍
+- 故事更适合 PhD 申请："我做了产品 → 发现现象 → 系统研究"
+
+### 7.3 实施阶段
+
+```
+Phase 0（最小重构，1 天内）
+  ├─ Mimosa 内部抽出 mimosa.core（LLM+history+memory+personality）
+  └─ 验证 demo 仍跑通
+
+Phase 1  申请前必做（核心 contribution，论文路线 1）
+  ├─ 创建 persona-drift 仓库
+  ├─ 从 Mimosa 拷贝 core 模块（copy，不是 import）
+  ├─ 写 simulated_user.py + run_dialogue.py（hello-world：1 char × 1 user × 50 turns）
   ├─ RQ1 实验：5 种用户风格 × 多 baseline × 批量 session
   ├─ RQ2 实验：多 baseline × 长 session × 终态分布分析
   ├─ RQ3 实验：扰动 → 恢复 双阶段实验
@@ -260,12 +326,17 @@ Phase 1  申请前必做（核心 contribution）
 
 Phase 2  申请中 / 入学初期（自然延伸）
   ├─ B1 memory selection policy ablation
-  └─ B2 memory ↔ personality 双向耦合实验
+  ├─ B2 memory ↔ personality 双向耦合实验
+  └─ 把有产品价值的发现 cherry-pick 回 Mimosa
 ```
 
 申请材料层面：
 - Phase 1 → 进 CV、写进 SOP 主体、demo video、project page
 - Phase 2 → 写在 SOP 的 "Future Work / Proposed Research" 段落，作为 PhD 第一年的研究纲领
+
+> 关于 lab → product 的转化路径：**论文结论 ≠ 产品改进方向**。
+> persona-drift 的发现（基于 simulated user）回流 Mimosa 前，需要在真人交互上做一次 sanity check，
+> 避免"对合成 user 有效但伤害真实用户体验"的修改进入产品。
 
 ---
 
@@ -278,6 +349,9 @@ Phase 2  申请中 / 入学初期（自然延伸）
 | 记忆架构 | 不接 mem0 | 接 mem0 是工程动作；自研 + ablation 才有研究价值；但 Phase 1 先不动这块 |
 | 多模态 | 文本情绪 OR 语音 valence/arousal 二选一，不做面部 | 面部硬件依赖、隐私问题、对申请加分有限 |
 | 演化约束 | RQ2 若证实塌缩，提出 KL / anchor regularization | 顺势把"发现问题"变成"提出方法" |
+| 论文类型 | Empirical phenomenon study（路线 1），非 benchmark | 单兵作战可承受；与已发表 phenomenon paper 同气质；命名不带 `-Bench` |
+| 仓库形态 | 双仓库（Mimosa + persona-drift），同步模式 3 | 产品故事与论文 artifact 分离；审稿人复现负担小；evolver 实验性改动不污染产品 |
+| 项目命名 | `persona-drift`（论文仓） | 现象词命名，不绑死形态；可作为论文里的项目名直接使用 |
 
 ---
 
